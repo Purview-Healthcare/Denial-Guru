@@ -19,10 +19,8 @@
 html,body{margin:0;padding:0}
 body{background:var(--bg);color:var(--ink);font:15.5px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .wrap{max-width:880px;margin:0 auto;padding:0 20px 80px}
-header{text-align:center;padding:40px 20px 26px}
-.logo{width:52px;height:52px;border-radius:14px;background:var(--accent);color:#fff;display:grid;place-items:center;
-  font-weight:700;font-size:20px;letter-spacing:-.5px;margin:0 auto 14px}
-h1{font-size:27px;margin:0 0 5px;letter-spacing:-.5px}
+header{text-align:center;padding:44px 20px 26px}
+h1{font-size:29px;margin:0 0 6px;letter-spacing:-.6px}
 .sub{color:var(--ink-3);font-size:14.5px;margin:0}
 .askbox{position:relative;margin-bottom:12px}
 #q{width:100%;padding:16px 52px 16px 18px;font:inherit;font-size:16.5px;border:1px solid var(--line);
@@ -75,6 +73,15 @@ ul.ask li{color:var(--ink)}
   border-radius:9px;font-size:13.5px;line-height:1.55}
 @media (prefers-color-scheme:dark){.caveat{background:#2e2415;border-color:#5b4720;color:#e0b467}}
 .caveat b{font-weight:700}
+.answer{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
+  border-radius:10px;padding:15px 17px;margin:0 0 20px}
+.answer .lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--accent-ink);margin-bottom:9px}
+.answer ol{margin:0;padding-left:19px}
+.answer ol li{margin:0 0 7px;font-size:15px;color:var(--ink);line-height:1.55}
+.answer ol li:last-child{margin-bottom:0}
+.answer p{margin:0;font-size:15px;color:var(--ink)}
+mark{background:color-mix(in srgb,var(--accent) 30%,transparent);color:inherit;padding:0 2px;border-radius:3px}
+@media (prefers-color-scheme:dark){mark{background:color-mix(in srgb,var(--accent) 38%,transparent)}}
 .browse{margin-top:38px}
 .browse>h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);margin:0 0 14px;font-weight:700}
 .famgrp{margin-bottom:20px}
@@ -91,7 +98,6 @@ ul.ask li{color:var(--ink)}
 <body>
 <div class="wrap">
   <header>
-    <div class="logo">DG</div>
     <h1>Denial Guru</h1>
     <p class="sub">Ask about any denial — what it means, what to ask the payer, what to do next.</p>
   </header>
@@ -136,6 +142,21 @@ const STOP=new Set(("a an the is are was were be been being do does did doing i 
 
 function tok(s){return String(s||"").toLowerCase().replace(/[^a-z0-9\s-]/g," ").split(/\s+/).filter(w=>w&&w.length>1&&!STOP.has(w));}
 
+// Inverse document frequency: a word in one scenario ("hospice", "taxonomy") is worth far
+// more than one in forty ("patient", "provider"). Without this, common words drag matches
+// toward whichever scenario happens to repeat them most.
+const IDF=(function(){
+  const df={}, N=DATA.length;
+  DATA.forEach(d=>{
+    new Set(tok([d.name,(d.keywords||[]).join(" "),d.denial_wording,d.summary,
+      (d.questions||[]).join(" "),(d.actions||[]).join(" ")].join(" "))).forEach(t=>{df[t]=(df[t]||0)+1;});
+  });
+  const out={};
+  Object.keys(df).forEach(t=>{ out[t]=Math.max(0.12,Math.log(N/(1+df[t]))+0.35); });
+  return out;
+})();
+function idf(t){ return IDF[t]===undefined?1.2:IDF[t]; }
+
 // pull denial codes out of a query: "CO-97", "co 97", "97", "B7", "MA120", "M119", "PR-1"
 function queryCodes(q){
   const out=new Set(); const s=q.toUpperCase();
@@ -171,13 +192,14 @@ function score(item,q){
 
   let matched=0;
   terms.forEach(t=>{
-    let hit=false;
-    if(nameT.has(t)){sc+=13;hit=true;}
-    else{ for(const n of nameT){ if(n.startsWith(t)||t.startsWith(n)){sc+=8;hit=true;break;} } }
-    if(kwT.has(t)){sc+=7;hit=true;}
-    if(wordT.has(t)){sc+=5;hit=true;}
-    if(sumT.has(t)){sc+=2.5;hit=true;}
-    if(bodyT.has(t)){sc+=1;hit=true;}
+    let hit=false, w=idf(t), add=0;
+    if(nameT.has(t)){add+=13;hit=true;}
+    else{ for(const n of nameT){ if(n.startsWith(t)||t.startsWith(n)){add+=8;hit=true;break;} } }
+    if(kwT.has(t)){add+=7;hit=true;}
+    if(wordT.has(t)){add+=5;hit=true;}
+    if(sumT.has(t)){add+=2.5;hit=true;}
+    if(bodyT.has(t)){add+=1;hit=true;}
+    sc+=add*w;
     if(hit)matched++;
   });
   // reward answers that cover most of what was asked
@@ -193,8 +215,8 @@ function search(q){
 function isConfident(r){
   if(!r.length) return false;
   const top=r[0].s, second=r.length>1?r[1].s:0;
-  if(top<28) return false;
-  return top>=60 || second===0 || top/second>=1.35;
+  if(top<45) return false;
+  return top>=150 || second===0 || top/second>=1.35;
 }
 
 function plainText(d){
@@ -204,22 +226,92 @@ function plainText(d){
   return t+"\nSource: "+d.url;
 }
 
+// highlight the words the person actually typed
+function hl(text,terms){
+  let s=esc(text);
+  const pat=terms.filter(t=>t.length>2).map(t=>t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).sort((a,b)=>b.length-a.length);
+  if(!pat.length) return s;
+  try{ return s.replace(new RegExp("("+pat.join("|")+")","gi"),"<mark>$1</mark>"); }catch(e){ return s; }
+}
+// what kind of answer is being asked for
+function intentOf(q){
+  const s=" "+q.toLowerCase()+" ";
+  // "what does CO-B7 mean" is a definition question, not a do-question — check this first
+  if(/\b(mean|means|meaning|definition|what is|what are|why (is|does|did|was)|explain)\b/.test(s)) return "means";
+  if(/\b(ask|asking|question|questions|call|calling|rep|representative|phone)\b/.test(s)) return "ask";
+  if(/\b(do|next|fix|resolve|handle|work|working|action|actions|step|steps|should|appeal|resubmit|correct|submit|send)\b/.test(s)) return "do";
+  return "means";
+}
+function sentences(s){
+  return String(s||"").split(/(?<=[.!?])\s+/).map(x=>x.trim()).filter(x=>x.length>28);
+}
+// Words that describe what KIND of answer is wanted, not what it's about. "ask" in
+// "what should I ask the payer" is a request for questions, not a word to go match on.
+const META=new Set(("ask asking question questions fix resolve handle mean means meaning explain "+
+  "definition next step steps action actions").split(" "));
+function contentTerms(terms){ const r=terms.filter(t=>!META.has(t)); return r.length?r:terms; }
+// pull the lines that actually answer what was asked
+function bestLines(d,terms,intent){
+  // Weight hard by intent. Someone asking "what should I ask the payer" wants an actual
+  // question back, not an action step that happens to contain the word "ask".
+  const W={ ask:{means:.4,ask:3,do:.25}, do:{means:.6,ask:.3,do:3}, means:{means:2.2,ask:.5,do:.6} }[intent];
+  const cands=[];
+  sentences(d.summary).forEach(t=>cands.push({t:t,k:"means",w:W.means}));
+  (d.questions||[]).forEach(t=>cands.push({t:t,k:"ask",w:W.ask}));
+  (d.actions||[]).forEach(t=>cands.push({t:t,k:"do",w:W.do}));
+  if(!cands.length) return [];
+  cands.forEach(c=>{
+    const ct=new Set(tok(c.t)); let hits=0;
+    terms.forEach(t=>{ const g=idf(t);
+      if(ct.has(t)) hits+=2*g; else{ for(const w of ct){ if(w.startsWith(t)||t.startsWith(w)){hits+=1*g;break;} } } });
+    c.s=hits*c.w;
+  });
+  let top=cands.filter(c=>c.s>0).sort((a,b)=>b.s-a.s).slice(0,3);
+  if(!top.length){
+    // Nothing matched on words (usually a bare code lookup). Answer the intent directly.
+    if(intent==="ask"&&d.questions.length) return d.questions.slice(0,3).map(t=>({t:t,k:"ask"}));
+    if(intent==="do"&&d.actions.length) return d.actions.slice(0,3).map(t=>({t:t,k:"do"}));
+    const lead=[];
+    const s1=sentences(d.summary)[0]; if(s1) lead.push({t:s1,k:"means"});
+    if(d.actions.length) lead.push({t:d.actions[0],k:"do"});
+    return lead;
+  }
+  return top;
+}
+
 function renderAnswer(d,q,alts,weak){
   const c=document.createElement("div"); c.className="card";
+  const intent=intentOf(q), terms=contentTerms(tok(q)), lines=bestLines(d,terms,intent);
+  const LBL={ask:"Short answer — what to ask",do:"Short answer — what to do",means:"Short answer"};
   let h='<div class="q">Asked <b>'+esc(q)+'</b></div><div class="body">';
   if(weak) h+='<p class="caveat"><b>Low confidence — this may not be what you asked.</b> Your question might be outside '+
     'the '+DATA.length+' denial scenarios I know. I only cover denial scenarios, not client rules, snooze windows, or your own SOPs. '+
     'Closest thing I found:</p>';
+
+  if(lines.length){
+    h+='<div class="answer"><div class="lbl">'+esc(LBL[intent])+'</div>'+
+      (lines.length===1?'<p>'+hl(lines[0].t,terms)+'</p>'
+        :'<ol>'+lines.map(l=>'<li>'+hl(l.t,terms)+'</li>').join("")+'</ol>')+'</div>';
+  }
+
   h+='<div class="hit"><h2>'+esc(d.name)+'</h2><span class="fam">'+esc(d.family)+'</span></div>';
   if(d.codes&&d.codes.length) h+='<div class="codes">'+d.codes.map(x=>'<span class="code">'+esc(x)+'</span>').join("")+'</div>';
-  if(d.denial_wording) h+='<p class="wording">'+esc(d.denial_wording)+'</p>';
-  if(d.summary) h+='<h3 class="sec">What it means</h3><p class="summary">'+esc(d.summary)+'</p>';
-  if(d.questions&&d.questions.length) h+='<h3 class="sec">Ask the payer</h3><ul class="list ask">'+d.questions.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>';
-  if(d.actions&&d.actions.length) h+='<h3 class="sec">What to do</h3><ul class="list">'+d.actions.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>';
+  if(d.denial_wording) h+='<p class="wording">'+hl(d.denial_wording,terms)+'</p>';
+
+  const secMeans = d.summary?'<h3 class="sec">What it means</h3><p class="summary">'+hl(d.summary,terms)+'</p>':'';
+  const secAsk = (d.questions&&d.questions.length)?'<h3 class="sec">Ask the payer ('+d.questions.length+')</h3><ul class="list ask">'+
+    d.questions.map(x=>'<li>'+hl(x,terms)+'</li>').join("")+'</ul>':'';
+  const secDo = (d.actions&&d.actions.length)?'<h3 class="sec">What to do ('+d.actions.length+')</h3><ul class="list">'+
+    d.actions.map(x=>'<li>'+hl(x,terms)+'</li>').join("")+'</ul>':'';
+  // lead with the section that matches the question
+  h += intent==="ask" ? (secAsk+secDo+secMeans)
+     : intent==="do"  ? (secDo+secAsk+secMeans)
+     :                  (secMeans+secAsk+secDo);
+
   h+='<div class="srcrow"><a href="'+esc(d.url)+'" target="_blank" rel="noopener">View the source page ↗</a>'+
      '<button class="copybtn">Copy answer</button></div></div>';
   if(alts&&alts.length){
-    h+='<div class="alts"><div class="lbl">Did you mean</div>'+
+    h+='<div class="alts"><div class="lbl">Related denials</div>'+
       alts.map(a=>'<button class="alt" data-name="'+esc(a.name)+'">'+esc(a.name)+
       (a.codes&&a.codes.length?' <span>· '+esc(a.codes.join(", "))+'</span>':'')+'</button>').join("")+'</div>';
   }
