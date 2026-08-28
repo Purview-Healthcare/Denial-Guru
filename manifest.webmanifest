@@ -1,0 +1,15 @@
+{
+  "name": "Denial Guru — AR Denial Reference",
+  "short_name": "Denial Guru",
+  "description": "Ask about any denial — what it means, what to ask the payer, what to do next. 58 AR denial scenarios plus quizzes.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f1f7f7",
+  "theme_color": "#0b8f84",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

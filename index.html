@@ -7,6 +7,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <title>Denial Guru — AR Denial Reference</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b8f84">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>
 :root{
   --navy:#0b1b26;
@@ -76,6 +81,10 @@ svg{display:block;flex:0 0 auto}
   font:inherit;font-size:13.5px;font-weight:700;padding:9px 15px;cursor:pointer;text-decoration:none;margin-bottom:6px}
 .pillbtn:hover{filter:brightness(1.08)}
 .pillbtn.amber{background:var(--orange);color:#3b2704}
+.pillbtn[hidden]{display:none}
+#installBtn{margin:0 0 6px auto}
+.pvlock{margin-left:14px}
+#installBtn:not([hidden])+.pvlock{margin-left:14px}
 
 /* ── shell ───────────────────────────────── */
 .wrap{max-width:1180px;margin:0 auto;padding:20px 22px 80px}
@@ -310,6 +319,7 @@ footer b{color:var(--ink-2)}
       <button class="navtab" data-panel="browsePanel">All Denials</button>
       <button class="navtab" data-panel="quizPanel">Quiz</button>
       <span class="navspacer"></span>
+      <button class="pillbtn" id="installBtn" hidden>Install app</button>
       <div class="pvlock" id="pvLock">
         <img id="pvImg" alt="Purview Healthcare" hidden>
         <span id="pvFallback" class="pvfull">
@@ -921,6 +931,26 @@ function renderResult(){
 }
 $$(".qmode").forEach(b=>b.addEventListener("click",()=>startQuizUI(b.dataset.mode,"All")));
 startQuizUI("ar","All");
+
+/* ── installable app wiring ─────────────────────────────
+   Registers the offline service worker when served over https (or localhost),
+   and surfaces the Install button only when the browser offers installation.
+   Opening the file directly from disk skips all of this harmlessly. */
+if("serviceWorker" in navigator && (location.protocol==="https:"||location.hostname==="localhost")){
+  addEventListener("load",function(){ navigator.serviceWorker.register("./sw.js").catch(function(){}); });
+}
+var __dp=null;
+addEventListener("beforeinstallprompt",function(e){
+  e.preventDefault(); __dp=e;
+  var b=document.getElementById("installBtn"); if(b) b.hidden=false;
+});
+addEventListener("appinstalled",function(){
+  var b=document.getElementById("installBtn"); if(b) b.hidden=true;
+});
+document.getElementById("installBtn").addEventListener("click",function(){
+  if(__dp){ __dp.prompt(); __dp=null; }
+  document.getElementById("installBtn").hidden=true;
+});
 </script>
 </body>
 </html>
