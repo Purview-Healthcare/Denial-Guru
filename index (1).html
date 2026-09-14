@@ -369,6 +369,9 @@ footer b{color:var(--ink-2)}
 .adm-tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:var(--sh)}
 .adm-tile b{display:block;font-family:var(--font-display);font-size:28px;font-weight:800;color:#0b8f84;line-height:1;font-variant-numeric:tabular-nums}
 .adm-tile span{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);margin-top:6px}
+.adm-count{display:flex;align-items:baseline;gap:12px;margin-bottom:26px}
+.adm-count b{font-family:var(--font-display);font-size:44px;font-weight:800;color:#0b8f84;line-height:1;font-variant-numeric:tabular-nums}
+.adm-count span{font-size:14px;font-weight:600;color:var(--ink-3)}
 .adm-sec{font-family:var(--font-display);font-size:15px;font-weight:800;margin:24px 0 11px;display:flex;gap:9px;align-items:center;color:var(--ink)}
 .adm-n{font-size:12px;font-weight:700;color:var(--ink-3);background:#eef4f4;padding:3px 9px;border-radius:999px}
 .adm-tblwrap{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh);overflow-x:auto}
@@ -479,17 +482,10 @@ footer b{color:var(--ink-2)}
     <button id="admLogout" type="button">Log out</button>
   </div></div>
   <div class="adm-wrap">
-    <div class="adm-head"><h2>Last 7 days</h2><span id="admAsof"></span></div>
-    <div class="adm-tiles">
-      <div class="adm-tile"><b id="admUsers">0</b><span>Total registered</span></div>
-      <div class="adm-tile"><b id="admSign">0</b><span>Sign-ups (7d)</span></div>
-      <div class="adm-tile"><b id="admLog">0</b><span>Logins (7d)</span></div>
-      <div class="adm-tile"><b id="admActive">0</b><span>Active users (7d)</span></div>
-    </div>
-    <div class="adm-sec">New sign-ups <span class="adm-n" id="admCSign">0</span></div>
+    <div class="adm-head"><h2>Last 4 days</h2><span id="admAsof"></span></div>
+    <div class="adm-count"><b id="admCSign">0</b><span>new sign-ups in the last 4 days</span></div>
+    <div class="adm-sec">Who signed up</div>
     <div class="adm-tblwrap"><table class="adm-tbl"><thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>City</th><th>State</th><th>When</th></tr></thead><tbody id="admSignRows"></tbody></table></div>
-    <div class="adm-sec">Logins <span class="adm-n" id="admCLog">0</span></div>
-    <div class="adm-tblwrap"><table class="adm-tbl"><thead><tr><th>Name</th><th>Email</th><th>Company</th><th>When</th></tr></thead><tbody id="admLogRows"></tbody></table></div>
   </div>
 </div>
 <script>
@@ -1263,14 +1259,8 @@ function admRowsLog(list){
   return list.map(function(l){return '<tr><td class="nm">'+esc(l.name)+'</td><td>'+esc(l.email)+'</td><td>'+esc(l.company)+'</td><td>'+admFmt(l.ts)+'</td></tr>';}).join("");
 }
 function renderAdmin(r){
-  document.getElementById("admUsers").textContent=r.totals.users;
-  document.getElementById("admSign").textContent=r.totals.signups7;
-  document.getElementById("admLog").textContent=r.totals.logins7;
-  document.getElementById("admActive").textContent=r.totals.active7;
   document.getElementById("admCSign").textContent=r.signups.length;
-  document.getElementById("admCLog").textContent=r.logins.length;
   document.getElementById("admSignRows").innerHTML=admRowsSign(r.signups);
-  document.getElementById("admLogRows").innerHTML=admRowsLog(r.logins);
   document.getElementById("admAsof").textContent="as of "+new Date().toLocaleString();
 }
 async function adminOpen(email,pass){
