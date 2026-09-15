@@ -467,7 +467,7 @@ footer b{color:var(--ink-2)}
         <input type="email" id="adEmail" autocomplete="username" required></div>
       <div class="fld"><label for="adPass">Password <span class="req">*</span></label>
         <input type="password" id="adPass" autocomplete="current-password" required></div>
-      <button class="authbtn" type="submit" id="adBtn">Open dashboard</button>
+      <button class="authbtn" type="submit" id="adBtn">Sign in as admin</button>
       <div class="authmsg" id="adMsg"></div>
       <p class="authnote"><a class="authlink" data-go="signin">← Back to sign in</a></p>
     </form>
@@ -478,6 +478,7 @@ footer b{color:var(--ink-2)}
   <div class="adm-bar"><div class="adm-bar-in">
     <span class="bt">Denial<span>Guru</span></span><span class="adm-tag">Admin</span>
     <span class="adm-sp"></span>
+    <button id="admBack" type="button">← Back to app</button>
     <button id="admRefresh" type="button">Refresh</button>
     <button id="admLogout" type="button">Log out</button>
   </div></div>
@@ -509,6 +510,7 @@ footer b{color:var(--ink-2)}
       <button class="navtab" data-panel="browsePanel">All Denials</button>
       <button class="navtab" data-panel="quizPanel">Quiz</button>
       <span class="navspacer"></span>
+      <button class="pillbtn" id="adminBtn" hidden>Sign-ups</button>
       <span id="userChip" hidden><span class="hi">Hi, <b id="userName">there</b></span><button id="signOut" type="button">Sign out</button></span>
       <button class="pillbtn" id="installBtn" hidden>Install app</button>
       <div class="pvlock" id="pvLock">
@@ -1144,13 +1146,19 @@ async function dgApi(payload){
 }
 function showGate(){ var g=document.getElementById("authGate"); if(g) g.hidden=false; document.body.style.overflow="hidden"; }
 function hideGate(){ var g=document.getElementById("authGate"); if(g) g.hidden=true; document.body.style.overflow=""; }
+var __admCred=null;
 function enterApp(u){
   setSession(u);
   var n=document.getElementById("userName"); if(n) n.textContent=firstName(u.name);
   var c=document.getElementById("userChip"); if(c) c.hidden=false;
+  var ab=document.getElementById("adminBtn"); if(ab) ab.hidden=!(u&&u.admin);
   hideGate();
 }
-function signOut(){ clearSession(); var c=document.getElementById("userChip"); if(c) c.hidden=true; showScreen("signin"); showGate(); }
+function signOut(){ clearSession(); __admCred=null;
+  var c=document.getElementById("userChip"); if(c) c.hidden=true;
+  var ab=document.getElementById("adminBtn"); if(ab) ab.hidden=true;
+  var av=document.getElementById("adminView"); if(av) av.hidden=true;
+  showScreen("signin"); showGate(); }
 
 function msg(el,kind,text){ el.className="authmsg "+kind; el.innerHTML=text; }
 var ERR={
@@ -1247,10 +1255,9 @@ function wireAuth(){
 (function initAuth(){
   wireAuth();
 /* ── inline admin dashboard ── */
-var __admCred=null;
 function admFmt(ts){var d=new Date(ts);return d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+", "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
 function admRowsSign(list){
-  if(!list.length) return '<tr><td colspan="7" class="adm-empty">No sign-ups in the last 7 days.</td></tr>';
+  if(!list.length) return '<tr><td colspan="7" class="adm-empty">No sign-ups in the last 4 days.</td></tr>';
   return list.map(function(s){return '<tr><td class="nm">'+esc(s.name)+'</td><td>'+esc(s.company)+'</td><td>'+esc(s.email)+
     '</td><td>'+esc(s.phone)+'</td><td>'+esc(s.city)+'</td><td>'+esc(s.state)+'</td><td>'+admFmt(s.ts)+'</td></tr>';}).join("");
 }
@@ -1263,26 +1270,40 @@ function renderAdmin(r){
   document.getElementById("admSignRows").innerHTML=admRowsSign(r.signups);
   document.getElementById("admAsof").textContent="as of "+new Date().toLocaleString();
 }
-async function adminOpen(email,pass){
+async function adminLogin(email,pass){
   var m=document.getElementById("adMsg"), b=document.getElementById("adBtn");
-  b.disabled=true; b.textContent="Opening…"; m.className="authmsg";
+  b.disabled=true; b.textContent="Signing in…"; m.className="authmsg";
   try{
     var r=await dgApi({action:"admin_data",adminEmail:email,adminPassword:pass});
-    if(r&&r.ok){ __admCred={e:email,p:pass}; renderAdmin(r);
-      hideGate(); document.getElementById("adminView").hidden=false; document.body.style.overflow="hidden";
-    } else { m.className="authmsg err"; m.textContent = (r&&r.error==="bad_admin")?"Wrong admin email or password.":"Couldn't load the dashboard."; }
+    if(r&&r.ok){ __admCred={e:email,p:pass};
+      enterApp({name:"Admin",email:email,admin:true,ap:pass});
+      var ap=document.getElementById("adPass"); if(ap) ap.value="";
+    } else { m.className="authmsg err"; m.textContent = (r&&r.error==="bad_admin")?"Wrong admin email or password.":"Couldn't sign in."; }
   }catch(err){ m.className="authmsg err"; m.textContent = err.message==="not_configured"?"Not connected yet — finish the Google setup.":"Couldn't reach the server."; }
-  b.disabled=false; b.textContent="Open dashboard";
+  b.disabled=false; b.textContent="Sign in as admin";
+}
+async function openDashboard(){
+  if(!__admCred){ var s=getSession(); if(s&&s.admin&&s.ap) __admCred={e:s.email,p:s.ap}; }
+  if(!__admCred){ showScreen("admin"); showGate(); return; }
+  var btn=document.getElementById("adminBtn"); if(btn){ btn.disabled=true; btn.textContent="Loading…"; }
+  try{
+    var r=await dgApi({action:"admin_data",adminEmail:__admCred.e,adminPassword:__admCred.p});
+    if(r&&r.ok){ renderAdmin(r); document.getElementById("adminView").hidden=false; document.body.style.overflow="hidden"; }
+    else if(r&&r.error==="bad_admin"){ __admCred=null; showScreen("admin"); showGate(); }
+  }catch(err){}
+  if(btn){ btn.disabled=false; btn.textContent="Sign-ups"; }
 }
 function wireAdmin(){
   var f=document.getElementById("afAdmin");
-  if(f) f.addEventListener("submit",function(e){ e.preventDefault(); adminOpen(val("adEmail"), val("adPass")); });
+  if(f) f.addEventListener("submit",function(e){ e.preventDefault(); adminLogin(val("adEmail"), val("adPass")); });
+  var ab=document.getElementById("adminBtn");
+  if(ab) ab.addEventListener("click", openDashboard);
   var rf=document.getElementById("admRefresh");
-  if(rf) rf.addEventListener("click",function(){ if(__admCred) adminOpen(__admCred.e,__admCred.p); });
+  if(rf) rf.addEventListener("click", openDashboard);
+  var bk=document.getElementById("admBack");
+  if(bk) bk.addEventListener("click",function(){ document.getElementById("adminView").hidden=true; document.body.style.overflow=""; });
   var lo=document.getElementById("admLogout");
-  if(lo) lo.addEventListener("click",function(){ __admCred=null;
-    document.getElementById("adminView").hidden=true; showScreen("signin"); showGate();
-    var p=document.getElementById("adPass"); if(p) p.value=""; });
+  if(lo) lo.addEventListener("click",function(){ document.getElementById("adminView").hidden=true; signOut(); });
 }
 wireAdmin();
 
@@ -1294,6 +1315,8 @@ wireAdmin();
   if(sessionValid(s)){
     var n=document.getElementById("userName"); if(n) n.textContent=firstName(s.name);
     var c=document.getElementById("userChip"); if(c) c.hidden=false;
+    var ab=document.getElementById("adminBtn"); if(ab) ab.hidden=!(s&&s.admin);
+    if(s&&s.admin&&s.ap) __admCred={e:s.email,p:s.ap};
     hideGate();
   } else if(need){ if(s) clearSession(); showScreen("signin"); showGate(); }
   else { hideGate(); }
