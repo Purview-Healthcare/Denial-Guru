@@ -1,6 +1,6 @@
 /* Denial Guru offline service worker.
    Bump VER on any release to invalidate old caches. */
-const VER = "denial-guru-v2";
+const VER = "denial-guru-v5";
 const RT  = VER + "-rt";
 const APP = ["./", "./index.html", "./manifest.webmanifest",
              "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png",
@@ -20,17 +20,18 @@ self.addEventListener("activate", e => {
 
 self.addEventListener("fetch", e => {
   const req = e.request;
-  if (req.method !== "GET") return;
+  if (req.method !== "GET") return;   // never touch the sign-up/login POSTs
   const url = new URL(req.url);
 
-  // Page loads: network first so updates arrive, cached app when offline.
-  if (req.mode === "navigate") {
+  // Page loads and config.js: network-first so updates (and the SCRIPT_URL) arrive,
+  // cached copy when offline.
+  if (req.mode === "navigate" || url.pathname.endsWith("/config.js")) {
     e.respondWith(
       fetch(req).then(r => {
         const cp = r.clone();
-        caches.open(VER).then(c => c.put("./index.html", cp));
+        caches.open(VER).then(c => c.put(req.mode === "navigate" ? "./index.html" : req, cp));
         return r;
-      }).catch(() => caches.match("./index.html"))
+      }).catch(() => caches.match(req).then(hit => hit || caches.match("./index.html")))
     );
     return;
   }
@@ -47,8 +48,7 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // Google Fonts: serve cached, refresh in background. Offline before first
-  // font fetch simply falls back to system fonts.
+  // Google Fonts: cached, refresh in background.
   if (/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) {
     e.respondWith(
       caches.open(RT).then(async c => {
