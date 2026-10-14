@@ -398,6 +398,18 @@ footer b{color:var(--ink-2)}
 .fb-stars{display:flex;gap:6px}
 .fb-stars button{border:0;background:none;font-size:30px;line-height:1;color:#d9e2e6;cursor:pointer;padding:0}
 .fb-stars button.on{color:#f5a623}
+.fb-opt{font-weight:500;color:var(--ink-3)}
+.fb-drop{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 13px;border:1.5px dashed var(--line);border-radius:10px;font-size:13px;color:var(--ink-3)}
+.fb-drop.over{border-color:var(--blue);background:var(--blue-soft)}
+.fb-add{border:1px solid var(--line-2);background:#fff;border-radius:8px;font:inherit;font-size:13px;font-weight:600;color:var(--blue-deep);padding:7px 12px;cursor:pointer}
+.fb-add:hover{border-color:var(--blue)}
+.fb-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.fb-thumbs:empty{display:none}
+.fb-thumb{position:relative;width:72px;height:56px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f4f8f8}
+.fb-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.fb-thumb button{position:absolute;top:2px;right:2px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(11,27,38,.7);color:#fff;font-size:13px;line-height:1;cursor:pointer;padding:0}
+.fb-note{font-size:12px;color:var(--ink-3);margin:8px 0 0}
+.adm-att a{color:var(--blue-deep);font-weight:600;margin-right:8px}
 .adm-sec{font-family:var(--font-display);font-size:15px;font-weight:800;margin:24px 0 11px;display:flex;gap:9px;align-items:center;color:var(--ink)}
 .adm-n{font-size:12px;font-weight:700;color:var(--ink-3);background:#eef4f4;padding:3px 9px;border-radius:999px}
 .adm-tblwrap{background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh);overflow-x:auto}
@@ -527,7 +539,7 @@ footer b{color:var(--ink-2)}
     <div class="adm-sec">Who signed up</div>
     <div class="adm-tblwrap"><table class="adm-tbl"><thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>City</th><th>State</th><th>Signed up</th><th>Questions</th><th>Last login</th></tr></thead><tbody id="admSignRows"></tbody></table></div>
     <div class="adm-sec">Recent feedback <span class="adm-n" id="admFbN">0</span></div>
-    <div class="adm-tblwrap"><table class="adm-tbl"><thead><tr><th>Name</th><th>Rating</th><th>Category</th><th>Message</th><th>When</th></tr></thead><tbody id="admFbRows"></tbody></table></div>
+    <div class="adm-tblwrap"><table class="adm-tbl"><thead><tr><th>Name</th><th>Rating</th><th>Category</th><th>Message</th><th>Screenshots</th><th>When</th></tr></thead><tbody id="admFbRows"></tbody></table></div>
   </div>
 </div>
 
@@ -546,6 +558,15 @@ footer b{color:var(--ink-2)}
       </div>
       <div class="fb-fld"><label for="fbText">Your feedback</label>
         <textarea id="fbText" rows="4" placeholder="Type your feedback&#8230;"></textarea>
+      </div>
+      <div class="fb-fld"><label for="fbFile">Screenshots <span class="fb-opt">(optional, up to 3)</span></label>
+        <div class="fb-drop" id="fbDrop">
+          <input type="file" id="fbFile" accept="image/*" multiple hidden>
+          <button type="button" class="fb-add" id="fbAdd">Attach image</button>
+          <span>or paste a snip with Ctrl+V</span>
+        </div>
+        <div class="fb-thumbs" id="fbThumbs"></div>
+        <p class="fb-note">Crop out patient names, IDs and dates of birth before attaching.</p>
       </div>
       <button class="authbtn" type="submit" id="fbSubmit">Send feedback</button>
       <div class="authmsg" id="fbMsg"></div>
@@ -873,12 +894,61 @@ function logQuestion(q){
   }catch(e){}
 }
 
+/* Shrink a screenshot before it is sent: at most 1600px on the long side,
+   PNG when that stays small (sharp text), otherwise JPEG. Returns base64 without the data: prefix. */
+function fbShrink(file){
+  return new Promise(function(resolve,reject){
+    var url=URL.createObjectURL(file), img=new Image();
+    img.onload=function(){
+      var k=Math.min(1,1600/Math.max(img.width,img.height)), c=document.createElement("canvas");
+      c.width=Math.max(1,Math.round(img.width*k)); c.height=Math.max(1,Math.round(img.height*k));
+      var x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      var d=c.toDataURL("image/png"), type="image/png", ext=".png";
+      if(d.length>1400000){ d=c.toDataURL("image/jpeg",0.85); type="image/jpeg"; ext=".jpg"; }
+      var base=String(file.name||"").replace(/\.[^.]*$/,"")||"screenshot";
+      if(base==="image") base="screenshot";
+      resolve({name:base+ext,type:type,data:d.split(",")[1],preview:d});
+    };
+    img.onerror=function(){ URL.revokeObjectURL(url); reject(new Error("bad_image")); };
+    img.src=url;
+  });
+}
 /* feedback modal wiring */
 function wireFeedback(){
   var modal=document.getElementById("fbModal"); if(!modal) return;
-  var open=document.getElementById("fbBtn"), rating=0;
+  var open=document.getElementById("fbBtn"), rating=0, files=[];
+  var fileIn=document.getElementById("fbFile"), drop=document.getElementById("fbDrop"), thumbs=document.getElementById("fbThumbs");
+  function drawThumbs(){
+    thumbs.innerHTML="";
+    files.forEach(function(f,i){ var d=document.createElement("div"); d.className="fb-thumb";
+      d.innerHTML='<img alt=""><button type="button" aria-label="Remove image">&times;</button>';
+      d.querySelector("img").src=f.preview;
+      d.querySelector("button").addEventListener("click",function(){ files.splice(i,1); drawThumbs(); });
+      thumbs.appendChild(d); });
+  }
+  async function addFiles(list){
+    var m=document.getElementById("fbMsg");
+    for(var i=0;i<list.length;i++){
+      if(files.length>=3){ m.className="authmsg err"; m.textContent="Up to 3 images per message."; break; }
+      if(!/^image\//.test(list[i].type)){ m.className="authmsg err"; m.textContent="Only images can be attached."; continue; }
+      try{ files.push(await fbShrink(list[i])); m.className="authmsg"; m.textContent=""; }
+      catch(e){ m.className="authmsg err"; m.textContent="That image couldn't be read."; }
+    }
+    drawThumbs();
+  }
+  document.getElementById("fbAdd").addEventListener("click",function(){ fileIn.click(); });
+  fileIn.addEventListener("change",function(){ addFiles(Array.prototype.slice.call(fileIn.files)); fileIn.value=""; });
+  drop.addEventListener("dragover",function(e){ e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave",function(){ drop.classList.remove("over"); });
+  drop.addEventListener("drop",function(e){ e.preventDefault(); drop.classList.remove("over"); addFiles(Array.prototype.slice.call(e.dataTransfer.files)); });
+  document.addEventListener("paste",function(e){
+    if(modal.hidden||!e.clipboardData) return;
+    var imgs=Array.prototype.slice.call(e.clipboardData.files||[]).filter(function(f){ return /^image\//.test(f.type); });
+    if(imgs.length){ e.preventDefault(); addFiles(imgs); }
+  });
   function setRating(n){ rating=n; document.querySelectorAll("#fbStars button").forEach(function(b){ b.classList.toggle("on", Number(b.dataset.star)<=n); }); }
-  function openModal(){ setRating(0); var c=document.getElementById("fbCat"); if(c) c.value=""; var t=document.getElementById("fbText"); if(t) t.value=""; var m=document.getElementById("fbMsg"); m.className="authmsg"; m.textContent=""; modal.hidden=false; }
+  function openModal(){ setRating(0); var c=document.getElementById("fbCat"); if(c) c.value=""; var t=document.getElementById("fbText"); if(t) t.value=""; files=[]; drawThumbs(); var m=document.getElementById("fbMsg"); m.className="authmsg"; m.textContent=""; modal.hidden=false; }
   function closeModal(){ modal.hidden=true; }
   if(open) open.addEventListener("click", openModal);
   document.querySelectorAll("#fbStars button").forEach(function(b){ b.addEventListener("click",function(){ setRating(Number(b.dataset.star)); }); });
@@ -887,10 +957,10 @@ function wireFeedback(){
   if(form) form.addEventListener("submit", async function(e){
     e.preventDefault();
     var msg=((document.getElementById("fbText")||{}).value||"").trim(), cat=(document.getElementById("fbCat")||{}).value||"", m=document.getElementById("fbMsg"), b=document.getElementById("fbSubmit");
-    if(!rating && !msg){ m.className="authmsg err"; m.textContent="Please add a rating or a message."; return; }
+    if(!rating && !msg && !files.length){ m.className="authmsg err"; m.textContent="Please add a rating, a message or a screenshot."; return; }
     var s=(typeof getSession==="function"?getSession():null)||{};
     b.disabled=true; b.textContent="Sending…"; m.className="authmsg";
-    try{ var r=await dgApi({action:"feedback",email:s.email||"",name:s.name||"",company:s.company||"",rating:rating||"",category:cat,message:msg});
+    try{ var r=await dgApi({action:"feedback",email:s.email||"",name:s.name||"",company:s.company||"",rating:rating||"",category:cat,message:msg,attachments:files.map(function(f){ return {name:f.name,type:f.type,data:f.data}; })});
       if(r&&r.ok){ m.className="authmsg ok"; m.textContent="Thanks for your feedback!"; setTimeout(closeModal,1200); }
       else { m.className="authmsg err"; m.textContent="Couldn't send — please try again."; }
     }catch(err){ m.className="authmsg err"; m.textContent = (err&&err.message==="not_configured")?"Not connected yet.":"Couldn't reach the server."; }
@@ -1362,8 +1432,12 @@ function admRowsSign(list){
     '</td><td>'+(s.questions||0)+'</td><td>'+(s.lastLogin?admFmt(s.lastLogin):'—')+'</td></tr>';}).join("");
 }
 function admRowsFb(list){
-  if(!list.length) return '<tr><td colspan="5" class="adm-empty">No feedback in the last 5 days.</td></tr>';
-  return list.map(function(f){return '<tr><td class="nm">'+esc(f.name||f.email)+'</td><td>'+(f.rating?(f.rating+'★'):'—')+'</td><td>'+esc(f.category||'—')+'</td><td>'+esc(f.message||'')+'</td><td>'+admFmt(f.ts)+'</td></tr>';}).join("");
+  if(!list.length) return '<tr><td colspan="6" class="adm-empty">No feedback in the last 5 days.</td></tr>';
+  return list.map(function(f){return '<tr><td class="nm">'+esc(f.name||f.email)+'</td><td>'+(f.rating?(f.rating+'★'):'—')+'</td><td>'+esc(f.category||'—')+'</td><td>'+esc(f.message||'')+'</td><td class="adm-att">'+admAtt(f.attachments)+'</td><td>'+admFmt(f.ts)+'</td></tr>';}).join("");
+}
+function admAtt(list){
+  if(!list||!list.length) return '—';
+  return list.map(function(a,i){ var u=String(a&&a.url||""); return /^https:\/\//.test(u)?'<a href="'+esc(u)+'" target="_blank" rel="noopener">Image '+(i+1)+'</a>':''; }).join("")||'—';
 }
 var __admRows=[];
 function renderAdmin(r){
