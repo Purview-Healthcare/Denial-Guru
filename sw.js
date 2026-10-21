@@ -1,6 +1,6 @@
 /* Denial Guru offline service worker.
    Bump VER on any release to invalidate old caches. */
-const VER = "denial-guru-v5";
+const VER = "denial-guru-v6";
 const RT  = VER + "-rt";
 const APP = ["./", "./index.html", "./manifest.webmanifest",
              "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png",
@@ -23,8 +23,7 @@ self.addEventListener("fetch", e => {
   if (req.method !== "GET") return;   // never touch the sign-up/login POSTs
   const url = new URL(req.url);
 
-  // Page loads and config.js: network-first so updates (and the SCRIPT_URL) arrive,
-  // cached copy when offline.
+  // Page loads and config.js: network-first so updates (and the SCRIPT_URL) arrive, cached copy when offline.
   if (req.mode === "navigate" || url.pathname.endsWith("/config.js")) {
     e.respondWith(
       fetch(req).then(r => {
